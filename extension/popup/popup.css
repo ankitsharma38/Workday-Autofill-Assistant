@@ -36,16 +36,13 @@ body {
   gap: 9px;
 }
 
-.logo-icon {
+.logo-img {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #cc0000 0%, #b30000 100%);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 6px rgba(204, 0, 0, 0.25);
+  border-radius: 50%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+  display: block;
 }
 
 .title {

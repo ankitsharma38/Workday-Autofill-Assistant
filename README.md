@@ -1,4 +1,8 @@
-# Workday Autofill Assistant (AI-Powered)
+<div align="center">
+  <img src="assets/logo.png" alt="Workday Autofill Assistant Logo" width="200" />
+  <h1>Workday Autofill Assistant (AI-Powered)</h1>
+  <p><strong>Autonomous multi-step Workday job application assistant powered by Chrome MV3 & FastAPI</strong></p>
+</div>
 
 An AI-driven Chrome Extension (Manifest V3) and FastAPI backend that automates complex, multi-step job applications on Workday platforms. The system parses unstructured resumes into validated JSON schemas, semantically maps fields dynamically using an LLM, handles complex dynamic DOM elements (repeatable sections, custom dropdowns, masked datepickers, autocomplete comboboxes), and submits **only after explicit human confirmation**.
 
