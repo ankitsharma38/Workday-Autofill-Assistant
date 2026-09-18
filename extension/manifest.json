@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Workday Autofill Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered autofill for Workday job applications (demo target: Target - Food & Beverage Team Leader).",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "host_permissions": [
+    "https://*.myworkdayjobs.com/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Workday Autofill Assistant"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.myworkdayjobs.com/*"],
+      "js": [
+        "content/scanner.js",
+        "content/filler.js",
+        "content/navigator.js",
+        "content/review-overlay.js",
+        "content/content.js"
+      ],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workday Autofill Assistant</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="title">Workday Autofill</h1>
+          <span class="subtitle">AI Application Assistant</span>
+        </div>
+      </div>
+      <div class="status-badge" id="backendStatus">
+        <span class="pulse-dot"></span>
+        <span class="status-text">AI Ready</span>
+      </div>
+    </header>
+
+    <!-- Upload Section -->
+    <section class="upload-section">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="resumeFile" accept=".pdf,.docx" />
+        <div class="drop-content">
+          <div class="upload-icon-wrapper">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="12" y2="12"/>
+              <line x1="15" y1="15" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <p class="drop-title" id="fileLabel">Drop resume or <span class="browse-link">browse</span></p>
+          <span class="drop-subtitle" id="fileNameDisplay">Supports PDF or DOCX format</span>
+        </div>
+      </div>
+
+      <button id="uploadBtn" class="primary-btn">
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text">Parse &amp; Save Resume</span>
+      </button>
+    </section>
+
+    <!-- Progress Card (shown during parsing) -->
+    <section class="progress-card" id="progressCard" style="display: none;">
+      <div class="progress-header">
+        <span class="progress-step-text" id="progressStep">Initializing parser...</span>
+        <span class="progress-percentage" id="progressPercent">0%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="progress-hint" id="progressHint">Reading document structure...</div>
+    </section>
+
+    <!-- Status Alert Message -->
+    <div id="statusAlert" class="status-alert" style="display: none;"></div>
+
+    <!-- Active Resume Profile Preview Card -->
+    <section class="preview-section" id="previewSection" style="display: none;">
+      <div class="preview-header">
+        <span class="section-label">SAVED CANDIDATE PROFILE</span>
+        <button id="clearBtn" class="text-btn" title="Upload new resume">Replace</button>
+      </div>
+      <div class="profile-card" id="profileCard">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- Footer Information -->
+    <footer class="app-footer">
+      <div class="footer-target">
+        <span class="status-dot-mini"></span>
+        <span>Activates automatically on Target &amp; Workday portals</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
