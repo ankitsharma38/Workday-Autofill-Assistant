@@ -101,10 +101,26 @@ async function processCurrentStep() {
           "[data-automation-id*='selectedItem'], [class*='selectedItem'], [class*='pill'], [class*='token'], [class*='Tag'], [data-automation-id*='compositePill']"
         );
         if (token && token.textContent.trim().length > 1) {
-          processedFieldIds.add(f.selectorId);
-          return false;
+          const isSkill = (f.label || "").toLowerCase().includes("skill");
+          // For skills, we let fillSkillsMultiSelect decide if more pills are needed
+          // For all other combobox fields (Field of Study, Degree, School, etc.), skip if already has a token
+          if (!isSkill) {
+            processedFieldIds.add(f.selectorId);
+            return false;
+          }
+        }
+
+        // Additional check for combobox-type fields: if placeholder text is "Type to add"
+        // and there's no pill yet, still skip if it was already processed this session
+        const labelLower = (f.label || "").toLowerCase();
+        const isComboboxField = labelLower.includes("field of study") || labelLower.includes("major") ||
+          labelLower.includes("school") || labelLower.includes("institution") ||
+          el.getAttribute("role") === "combobox" || el.getAttribute("type") === "search";
+        if (isComboboxField && !labelLower.includes("skill") && processedFieldIds.has(f.selectorId)) {
+          return false; // Already attempted this field this session — don't retry
         }
       }
+
 
       const isDatePlaceholder = ["mm/yyyy", "dd/mm/yyyy", "yyyy", "type to add"].includes((el.value || "").trim().toLowerCase());
       const containerHasError = container && (
@@ -146,6 +162,12 @@ async function processCurrentStep() {
 
     const seen = new Set();
     allFillLog = Array.from(logMap.values()).filter((item) => {
+      // Only retain fields whose DOM elements are currently present on the page
+      const el = document.querySelector(
+        `[data-wd-autofill-id="${item.selectorId}"], [data-wd-autofill-id^="${item.selectorId}::"]`
+      );
+      if (!el) return false;
+
       const key = `${item.label}::${item.value}`;
       if (seen.has(key)) return false;
       seen.add(key);

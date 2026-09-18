@@ -61,6 +61,16 @@ function findLabelForElement(el) {
     return ariaLabel.trim();
   }
 
+  // Quick check for Skills and Field of Study specialized identifiers
+  const placeholder = (el.getAttribute("placeholder") || "").toLowerCase();
+  const autoId = (el.getAttribute("data-automation-id") || "").toLowerCase();
+  if (placeholder.includes("skill") || autoId.includes("skill") || el.closest("[data-automation-id*='skill' i]")) {
+    return "Skills";
+  }
+  if (autoId.includes("fieldofstudy") || el.closest("[data-automation-id*='fieldOfStudy' i], [data-automation-id*='field-of-study' i]")) {
+    return "Field of Study";
+  }
+
   // 4. Walk up parent hierarchy to find question prompt or field container label
   let curr = el.parentElement;
   let depth = 0;

@@ -194,6 +194,35 @@ function getDegreeKeyword(text) {
   return t;
 }
 
+function getFieldOfStudyQueries(valStr) {
+  const queries = [valStr];
+  const lower = valStr.toLowerCase();
+
+  if (lower.includes("computer") || lower.includes("software") || lower.includes("it") || lower.includes("tech")) {
+    if (!queries.some((q) => q.toLowerCase() === "computer science")) queries.push("Computer Science");
+    if (!queries.some((q) => q.toLowerCase() === "computer engineering")) queries.push("Computer Engineering");
+    if (!queries.some((q) => q.toLowerCase() === "computer")) queries.push("Computer");
+    if (!queries.some((q) => q.toLowerCase() === "engineering")) queries.push("Engineering");
+    if (!queries.some((q) => q.toLowerCase() === "information technology")) queries.push("Information Technology");
+  } else if (lower.includes("engineering")) {
+    if (!queries.some((q) => q.toLowerCase() === "engineering")) queries.push("Engineering");
+    const words = valStr.split(/\s+/).filter((w) => w.length > 3);
+    for (const w of words) {
+      if (!queries.some((q) => q.toLowerCase() === w.toLowerCase())) queries.push(w);
+    }
+  } else if (lower.includes("business") || lower.includes("management") || lower.includes("commerce")) {
+    if (!queries.some((q) => q.toLowerCase() === "business administration")) queries.push("Business Administration");
+    if (!queries.some((q) => q.toLowerCase() === "business")) queries.push("Business");
+    if (!queries.some((q) => q.toLowerCase() === "management")) queries.push("Management");
+  } else {
+    const words = valStr.split(/\s+/).filter((w) => w.length >= 4 && !["and", "with", "from", "for", "the"].includes(w.toLowerCase()));
+    for (const w of words) {
+      if (!queries.some((q) => q.toLowerCase() === w.toLowerCase())) queries.push(w);
+    }
+  }
+  return queries;
+}
+
 async function fillComboboxLike(el, value) {
   if (!el || !value) return false;
   const container = el.closest("[data-automation-id*='formField'], [data-automation-id*='prompt'], div") || el.parentElement;
@@ -222,19 +251,25 @@ async function fillComboboxLike(el, value) {
     }
   }
 
-  const isDegree = (el.getAttribute("aria-label") || "").toLowerCase().includes("degree") ||
-                   (el.getAttribute("data-automation-id") || "").toLowerCase().includes("degree");
+  const labelLower = (el.getAttribute("aria-label") || el.getAttribute("data-automation-id") || container?.textContent?.slice(0, 50) || "").toLowerCase();
+  const isDegree = labelLower.includes("degree");
   const degreeKw = isDegree ? getDegreeKeyword(String(value)) : null;
+  const isFieldOfStudy = labelLower.includes("field of study") || labelLower.includes("major");
 
   const valStr = String(value).trim();
-  const searchQueries = [valStr];
-  if (degreeKw && degreeKw !== valStr.toLowerCase()) {
+  let searchQueries = [valStr];
+  if (isFieldOfStudy) {
+    searchQueries = getFieldOfStudyQueries(valStr);
+  } else if (degreeKw && degreeKw !== valStr.toLowerCase()) {
     searchQueries.unshift(degreeKw);
+  } else {
+    const cleanWords = valStr.split(/\s+/).filter((w) => w.length >= 4 && !["and", "with", "from", "for"].includes(w.toLowerCase()));
+    if (cleanWords.length > 1) {
+      searchQueries.push(cleanWords[0]);
+    }
   }
+
   const cleanWords = valStr.split(/\s+/).filter((w) => w.length >= 4 && !["and", "with", "from", "for"].includes(w.toLowerCase()));
-  if (cleanWords.length > 1) {
-    searchQueries.push(cleanWords[0]);
-  }
 
   for (const query of searchQueries) {
     el.scrollIntoView({ behavior: "auto", block: "center" });
@@ -292,6 +327,16 @@ async function fillComboboxLike(el, value) {
       }
     }
 
+    // Check if Workday displayed "No matches found"
+    const hasNoMatches = Array.from(document.querySelectorAll("*")).some(
+      (n) => n.children.length === 0 && n.textContent.trim().toLowerCase() === "no matches found"
+    );
+
+    if (hasNoMatches) {
+      console.log(`[WDAutofill Combobox] Query "${query}" returned "No matches found". Trying fallback.`);
+      continue; // do not pick default list options if "No matches found" was returned
+    }
+
     if (options.length > 0) {
       const targetClean = valStr.toLowerCase().replace(/['’.\-]/g, "").trim();
 
@@ -300,11 +345,21 @@ async function fillComboboxLike(el, value) {
         return text === targetClean || text.includes(targetClean) || targetClean.includes(text);
       });
 
-      if (!match && degreeKw) {
+      if (!match && isDegree && degreeKw) {
         match = options.find((opt) => {
           const text = opt.textContent.toLowerCase().replace(/['’.\-]/g, "");
           return text.includes(degreeKw);
         });
+      }
+
+      if (!match && isFieldOfStudy) {
+        const studyKeywords = ["computer science", "computer", "software", "engineering", "information technology"];
+        for (const kw of studyKeywords) {
+          if (valStr.toLowerCase().includes(kw) || query.toLowerCase().includes(kw)) {
+            match = options.find((opt) => opt.textContent.toLowerCase().includes(kw));
+            if (match) break;
+          }
+        }
       }
 
       if (!match) {
@@ -314,12 +369,12 @@ async function fillComboboxLike(el, value) {
         });
       }
 
-      if (!match) {
-        match = options[0];
-      }
-
       if (match) {
         match.scrollIntoView({ behavior: "auto", block: "nearest" });
+        const radio = match.querySelector("input[type='radio'], [role='radio'], input[type='checkbox'], [role='checkbox']");
+        if (radio) {
+          radio.click();
+        }
         const clickOpts = { bubbles: true, cancelable: true, view: window };
         match.dispatchEvent(new PointerEvent("pointerdown", clickOpts));
         match.dispatchEvent(new MouseEvent("mousedown", clickOpts));
@@ -462,57 +517,336 @@ function flagFieldForReview(selectorId, fieldMeta) {
   window.WDAutofill.pendingReview.push({ selectorId, label: fieldMeta.label, type: fieldMeta.type });
 }
 
+function setInputValueWithoutBlur(el, value) {
+  if (!el) return;
+  el.focus();
+  el.dispatchEvent(new Event("focusin", { bubbles: true }));
+
+  const prototype = window.HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+
+  const tracker = el._valueTracker;
+  if (tracker) {
+    tracker.setValue(value === "" ? "___reset___" : "");
+  }
+
+  if (descriptor && descriptor.set) {
+    descriptor.set.call(el, value);
+  } else {
+    el.value = value;
+  }
+
+  try {
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, cancelable: true, inputType: "insertText", data: String(value) }));
+  } catch (e) {
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 async function fillSkillsMultiSelect(inputEl, skillsValue) {
   if (!inputEl) return false;
+
+  console.log("[WDAutofill Skills] Starting fillSkillsMultiSelect with raw value:", skillsValue);
+
   let skillsList = [];
   if (Array.isArray(skillsValue)) {
-    skillsList = skillsValue;
+    skillsList = skillsValue.slice();
   } else if (typeof skillsValue === "string") {
     skillsList = skillsValue.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
   }
-  skillsList = skillsList.slice(0, 5); // Limit to top 5 skills
-  if (!skillsList.length) return false;
 
-  for (const skill of skillsList) {
-    const container = inputEl.closest("[data-automation-id*='skill'], [data-automation-id*='multiselect']") || inputEl.parentElement;
-    if (container && container.innerText.toLowerCase().includes(skill.toLowerCase())) {
-      continue; // skill pill already present
+  const preferred = ["React", "JavaScript", "Node.js", "SQL", "Python", "Java", "HTML", "CSS", "Git", "C++"];
+  const prioritized = [];
+  for (const p of preferred) {
+    const found = skillsList.find((s) => s.toLowerCase() === p.toLowerCase() || s.toLowerCase().includes(p.toLowerCase()));
+    if (found && !prioritized.includes(found)) prioritized.push(found);
+  }
+  for (const s of skillsList) {
+    if (!prioritized.includes(s)) prioritized.push(s);
+  }
+  if (!prioritized.length) prioritized.push("React", "Node.js", "SQL");
+
+  console.log("[WDAutofill Skills] Skills to try:", prioritized);
+
+  const baseContainer =
+    inputEl.closest("[data-automation-id*='formField'], [data-automation-id*='prompt'], [data-automation-id*='multiselect']") ||
+    inputEl.parentElement?.parentElement ||
+    inputEl.parentElement;
+
+  function getExistingPills() {
+    if (!baseContainer) return [];
+
+    // Strategy 1: count × close-buttons — Workday pills show an × (times) button.
+    // Each pill has exactly one, so button count = pill count.
+    const allBtns = Array.from(baseContainer.querySelectorAll("button")).filter(btn => {
+      if (btn.getBoundingClientRect().width === 0) return false;
+      const txt = btn.textContent.trim();
+      // × buttons: text is × \u00d7 ✕ \u2715 or aria-label has remove/delete/close/dismiss
+      const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+      return txt === "\u00d7" || txt === "\u2715" || txt === "\u00d7" || txt === "x" ||
+             ariaLabel.includes("remove") || ariaLabel.includes("delete") ||
+             ariaLabel.includes("close") || ariaLabel.includes("dismiss");
+    });
+    if (allBtns.length > 0) {
+      // Return pill names by reading sibling text of each × button
+      return allBtns.map((btn, i) => {
+        const pill = btn.closest("li, [class*='pill'], [class*='tag'], [class*='token'], [class*='chip'], [class*='selected'], [class*='item']") ||
+                     btn.parentElement;
+        const txt = pill ? pill.textContent.replace(/[\u00d7\u2715\u00d7x]/gi, "").trim().toLowerCase() : ("pill_" + i);
+        return txt || ("pill_" + i);
+      });
     }
 
-    inputEl.focus();
-    setReactInputValue(inputEl, skill, false);
-    await new Promise((r) => setTimeout(r, 500));
+    // Strategy 2: aria-label Remove buttons
+    const removeBtns = Array.from(baseContainer.querySelectorAll("[aria-label*='Remove' i], [aria-label*='Delete' i], [data-automation-id*='delete' i]"));
+    if (removeBtns.length > 0) {
+      return removeBtns.map((b, i) => (b.getAttribute("aria-label") || ("pill_" + i)).replace(/remove|delete/gi, "").trim().toLowerCase());
+    }
 
-    const options = Array.from(
-      document.querySelectorAll("[role='listbox'] [role='option'], [role='option'], [data-automation-id*='prompt-option']")
-    ).filter((elem) => elem.getBoundingClientRect().width > 0);
+    // Strategy 3: selectedItem / compositePill data-automation-id elements
+    const pillSelectors = [
+      "[data-automation-id*='selectedItem']",
+      "[data-automation-id*='compositePill']",
+      "[data-automation-id*='multiSelect-selectedItem']"
+    ].join(", ");
+    const elements = Array.from(baseContainer.querySelectorAll(pillSelectors));
+    return elements
+      .filter(el => el.querySelector("button") || el.children.length <= 2)
+      .map(el => el.textContent.trim().toLowerCase())
+      .filter(t => t.length > 0 && t.length < 80);
+  }
 
-    let selected = false;
-    if (options.length > 0) {
-      const match = options.find((opt) => opt.textContent.trim().toLowerCase().includes(skill.toLowerCase())) || options[0];
-      if (match) {
-        match.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-        match.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
-        match.click();
-        selected = true;
-        await new Promise((r) => setTimeout(r, 400));
+  // Find the skills search popup by locating the "Search Results" header
+  // that Workday displays after typing in the skills input.
+  function findSkillsPopupOptions() {
+    // Strategy 1: find any visible text node saying "Search Results..."
+    const allEls = Array.from(document.querySelectorAll("*"));
+    let searchResultsEl = null;
+    for (const el of allEls) {
+      if (el.children.length === 0 && el.getBoundingClientRect().width > 0) {
+        const txt = el.textContent.trim();
+        if (txt.startsWith("Search Results")) {
+          searchResultsEl = el;
+          break;
+        }
       }
     }
 
-    if (!selected) {
-      inputEl.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
-      inputEl.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
-      await new Promise((r) => setTimeout(r, 400));
+    if (searchResultsEl) {
+      console.log("[WDAutofill Skills] Found Search Results header:", searchResultsEl.textContent.trim());
+      // Walk UP to the popup container and collect checkbox rows
+      let popup = searchResultsEl.parentElement;
+      for (let i = 0; i < 6 && popup && popup !== document.body; i++) {
+        const rows = collectCheckboxRows(popup);
+        if (rows && rows.length > 0) return rows;
+        popup = popup.parentElement;
+      }
     }
+
+    // Strategy 2: look for checkboxItem elements near our input
+    const checkboxItems = Array.from(document.querySelectorAll("[data-automation-id*='checkboxItem']"))
+      .filter(el => el.getBoundingClientRect().width > 0);
+    if (checkboxItems.length > 0) {
+      console.log("[WDAutofill Skills] Found", checkboxItems.length, "checkboxItems directly");
+      return checkboxItems;
+    }
+
+    return null;
   }
 
-  // Clear any residual search text in input
-  if (inputEl.value) {
-    setReactInputValue(inputEl, "", false);
+  function collectCheckboxRows(container) {
+    const rows = Array.from(container.querySelectorAll(
+      "[data-automation-id*='checkboxItem'], [role='option'], [role='treeitem'], label"
+    )).filter(el => {
+      if (el.getBoundingClientRect().width === 0) return false;
+      const txt = el.textContent.trim();
+      return txt && !txt.startsWith("Search Results") && txt.length > 0;
+    });
+    return rows.length > 0 ? rows : null;
   }
-  return true;
+
+  // Type skill name into input then press Enter to trigger Workday search.
+  // Uses native value setter to clear (avoids execCommand(delete) eating focus),
+  // then execCommand(insertText) to type the full word in one shot.
+  async function typeAndSearch(input, value) {
+    input.focus();
+    input.click();
+    await new Promise(r => setTimeout(r, 150));
+
+    // Clear via native setter ONLY — execCommand("delete") can fire on wrong element
+    const nativeDesc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+    const tracker = input._valueTracker;
+    if (tracker) tracker.setValue("___reset___");
+    if (nativeDesc && nativeDesc.set) nativeDesc.set.call(input, "");
+    else input.value = "";
+    try {
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+    } catch (e) {
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    await new Promise(r => setTimeout(r, 120));
+
+    // Re-focus after clear (React might move focus)
+    input.focus();
+
+    // Type the full skill word in one execCommand call
+    let insertDone = false;
+    try {
+      if (typeof input.select === "function") input.select();
+      insertDone = document.execCommand("insertText", false, value);
+    } catch (e) {}
+
+    // Fallback: native setter + fire input events
+    if (!insertDone || input.value !== value) {
+      if (tracker) tracker.setValue("");
+      if (nativeDesc && nativeDesc.set) nativeDesc.set.call(input, value);
+      else input.value = value;
+    }
+
+    try {
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+    } catch (e) {
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    console.log("[WDAutofill Skills] Typed:", input.value, "| Expected:", value);
+
+    // Press Enter — triggers Workday's skills search API
+    const enterOpts = { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 };
+    input.dispatchEvent(new KeyboardEvent("keydown", enterOpts));
+    input.dispatchEvent(new KeyboardEvent("keypress", enterOpts));
+    input.dispatchEvent(new KeyboardEvent("keyup", enterOpts));
+  }
+
+  // Main loop
+  for (const skill of prioritized) {
+    if (getExistingPills().length >= 10) {
+      console.log("[WDAutofill Skills] Max skills added. Done.");
+      break;
+    }
+
+    const existing = getExistingPills();
+    const cleanSkill = skill.toLowerCase().trim();
+    if (existing.some((p) => p.includes(cleanSkill) || cleanSkill.includes(p))) {
+      console.log("[WDAutofill Skills] '" + skill + "' already present. Skipping.");
+      continue;
+    }
+
+    console.log("[WDAutofill Skills] === Processing: '" + skill + "' ===");
+
+    const currentInput =
+      baseContainer.querySelector("input[type='text'], input[role='combobox'], input[type='search'], input:not([type])") || inputEl;
+
+    currentInput.scrollIntoView({ behavior: "auto", block: "center" });
+    await typeAndSearch(currentInput, skill);
+
+    // Wait for "Search Results" popup or "No Items" (poll up to 3 sec)
+    let popupRows = null;
+    let noItems = false;
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await new Promise(r => setTimeout(r, 200));
+
+      // Check for no items
+      const noItemsEl = Array.from(document.querySelectorAll("*")).find(el =>
+        el.children.length === 0 &&
+        el.getBoundingClientRect().width > 0 &&
+        (el.textContent.trim().toLowerCase() === "no items" || el.textContent.trim().toLowerCase() === "no matches found")
+      );
+      if (noItemsEl) { noItems = true; break; }
+
+      popupRows = findSkillsPopupOptions();
+      if (popupRows && popupRows.length > 0) {
+        console.log("[WDAutofill Skills] Popup found on attempt " + attempt + ", rows: " + popupRows.length);
+        break;
+      }
+    }
+
+    if (noItems || !popupRows || popupRows.length === 0) {
+      console.log("[WDAutofill Skills] No popup/rows for '" + skill + "'. Skipping.");
+      const escOpts = { bubbles: true, cancelable: true, key: "Escape", code: "Escape", keyCode: 27, which: 27 };
+      currentInput.dispatchEvent(new KeyboardEvent("keydown", escOpts));
+      currentInput.dispatchEvent(new KeyboardEvent("keyup", escOpts));
+      await new Promise(r => setTimeout(r, 200));
+      continue;
+    }
+
+    console.log("[WDAutofill Skills] Rows:", popupRows.map(r => r.textContent.trim().substring(0, 40)));
+
+    // Match by text — priority order:
+    // 1. Exact match (e.g. "Java" === "java")
+    // 2. Parenthetical acronym match (e.g. "Structured Query Language (SQL)" for "sql")
+    // 3. Word-boundary startsWith: next char after skill must be space/./,/( so
+    //    "React.js" matches "react" but "React VR" also does — .js wins if listed first.
+    //    "SQLCLR" does NOT match "sql" because 'C' is not a separator.
+    // 4. Contains as fallback
+    function wordBoundaryStartsWith(text, prefix) {
+      if (!text.startsWith(prefix)) return false;
+      const nextChar = text[prefix.length];
+      return !nextChar || /[\s.,(\[/]/.test(nextChar);
+    }
+    const match =
+      popupRows.find(r => r.textContent.trim().toLowerCase() === cleanSkill) ||
+      popupRows.find(r => r.textContent.trim().toLowerCase().includes(`(${cleanSkill})`)) ||
+      popupRows.find(r => wordBoundaryStartsWith(r.textContent.trim().toLowerCase(), cleanSkill)) ||
+      popupRows.find(r => r.textContent.trim().toLowerCase().includes(cleanSkill));
+
+    if (!match) {
+      console.log("[WDAutofill Skills] No row matches '" + skill + "'. Skipping.");
+      const escOpts = { bubbles: true, cancelable: true, key: "Escape", code: "Escape", keyCode: 27, which: 27 };
+      currentInput.dispatchEvent(new KeyboardEvent("keydown", escOpts));
+      currentInput.dispatchEvent(new KeyboardEvent("keyup", escOpts));
+      await new Promise(r => setTimeout(r, 200));
+      continue;
+    }
+
+    console.log("[WDAutofill Skills] Clicking: '" + match.textContent.trim() + "'");
+    const pillsBefore = getExistingPills().length;
+    match.scrollIntoView({ behavior: "auto", block: "nearest" });
+
+    // Click the checkbox <input> inside the row â€” not the row itself
+    const checkbox = match.querySelector("input[type='checkbox']") ||
+      match.closest("[data-automation-id*='checkboxItem']")?.querySelector("input[type='checkbox']");
+
+    if (checkbox) {
+      console.log("[WDAutofill Skills] Clicking checkbox directly.");
+      checkbox.click();
+    } else {
+      const clickOpts = { bubbles: true, cancelable: true, view: window };
+      match.dispatchEvent(new MouseEvent("mousedown", clickOpts));
+      match.dispatchEvent(new MouseEvent("mouseup", clickOpts));
+      match.click();
+    }
+
+    // Wait for pill
+    let pillAdded = false;
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      if (getExistingPills().length > pillsBefore) { pillAdded = true; break; }
+    }
+    console.log("[WDAutofill Skills] Pill added: " + pillAdded + ". Pills:", getExistingPills());
+
+    const escOpts = { bubbles: true, cancelable: true, key: "Escape", code: "Escape", keyCode: 27, which: 27 };
+    currentInput.dispatchEvent(new KeyboardEvent("keydown", escOpts));
+    currentInput.dispatchEvent(new KeyboardEvent("keyup", escOpts));
+    await new Promise(r => setTimeout(r, 400));
+  }
+
+  const finalInput = baseContainer?.querySelector("input[type='text'], input[role='combobox'], input[type='search'], input:not([type])") || inputEl;
+  document.body.click();
+  if (finalInput) finalInput.blur();
+  await new Promise(r => setTimeout(r, 200));
+
+  const totalPills = getExistingPills().length;
+  console.log("[WDAutofill Skills] Finished. Total pills:", totalPills);
+
+  const success = totalPills > 0;
+  if (success) {
+    if (finalInput) finalInput.style.outline = "";
+    if (inputEl) inputEl.style.outline = "";
+  }
+  return success;
 }
-
 async function applyMapping(mapping, fieldMeta, confidenceThreshold = 0.6) {
   const { selectorId, value, confidence } = mapping;
 
