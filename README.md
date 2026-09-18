@@ -179,3 +179,38 @@ All tests verify file type validation, option matching logic, and Pydantic schem
 * **Authentication Guard**: Explicitly halts on login, registration, and CAPTCHA screens (`navigator.js`), allowing users to authenticate securely.
 * **Human-in-the-Loop**: The form is never submitted automatically without the user reviewing and clicking the confirmation button on the review overlay.
 * **Local Data Storage**: Candidate resume data is stored exclusively in `chrome.storage.local` on the client's machine.
+
+---
+
+## 🧠 AI Strategy
+
+### Resume Parsing (`/parse-resume`)
+- Raw PDF/DOCX text is extracted via `pdfplumber` and `python-docx`, then passed to **OpenAI `gpt-4o-mini`** with a structured prompt.
+- The LLM outputs a validated **Pydantic `ResumeData` schema** covering: personal info, work experience (company, title, dates, description), education (degree, field, institution, dates), skills list, and social links.
+- Date normalization (e.g. `"Jan 2021"` → `"01/2021"`) is enforced via Pydantic validators before the schema is returned.
+
+### Semantic Field Mapping (`/map-fields`)
+- Each discovered DOM field is labeled with hierarchical context (e.g. `"Work Experience 1 - Company Name"`, `"Education 2 - Degree Level"`) before being sent to the LLM.
+- The LLM receives: **field labels + field types + live dropdown options (for select/radio)** + the candidate's full resume JSON — and returns a structured mapping of `{selectorId, value, confidence, reasoning}` for every field.
+- **Confidence scoring (0.0–1.0):** Fields below `0.6` are flagged yellow in the review overlay for manual correction rather than blindly filled.
+- **Hallucination prevention:** For `<select>` and `<radio>` fields, the backend hard-validates LLM-suggested values against the live DOM option list using fuzzy matching (exact → normalized → keyword overlap). If no option matches, the field is skipped and flagged for review.
+
+### Heuristic Overrides
+- Work Authorization, Visa Sponsorship, Non-compete, and Age screening questions are answered via deterministic heuristics (from resume flags) independent of the LLM — ensuring consistent, legally safe responses without relying on LLM hallucination risk.
+
+---
+
+## ⚠️ Limitations
+
+| Limitation | Detail |
+|---|---|
+| **Workday version variance** | Workday instances differ by employer — DOM structure, `data-automation-id` attributes, and input patterns vary. The extension is tuned for `wd5.myworkdayjobs.com` variants. |
+| **Skills multi-select** | Workday's skills field is a custom React search-with-checkbox popup (not a native `<select>`). Automation requires typing, waiting for a "Search Results" popup, and clicking checkbox items. Skills not in Workday's internal taxonomy will show "No Items" and be skipped. |
+| **Repeatable sections** | Work Experience and Education section headers must be visible in the DOM. If Workday renders them inside shadow DOM or iframes, `navigator.js` may fail to find the Add buttons. |
+| **Authentication screens** | Login, account creation, CAPTCHA, and MFA screens are deliberately not automated. The user must complete these manually before autofill activates. |
+| **OpenAI API key required** | The backend requires a valid `OPENAI_API_KEY`. Without it, resume parsing and field mapping both fail. |
+| **Local backend dependency** | The FastAPI backend must be running on `localhost:8000` while the extension operates. Remote/cloud deployment is not currently configured. |
+| **PDF parsing quality** | Multi-column PDFs, image-based PDFs (scans), or heavily formatted resumes may produce incomplete text extraction. Plain/single-column PDFs yield best results. |
+| **Date field format** | Workday masked date inputs expect `MM/YYYY` format. Dates in unusual formats in resumes may not parse correctly and will be flagged for review. |
+| **No file upload automation** | Resume upload fields (file inputs on Workday) are intentionally skipped — Chrome extensions cannot programmatically set file input values for security reasons. |
+
